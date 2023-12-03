@@ -1,7 +1,12 @@
 ROOT:="~/advent_of_code_2023"
 EXEC_NAME:=""
 SRC=${PWD}/*.cpp
-TARGET=$(ROOT)/bin/$(NAME)
+TARGET=$(ROOT)/bin/$(EXEC_NAME)
 
 $(TARGET): $(SRC)
 	$(CC) -o $@ $^
+
+clean:
+	rm -f $(TARGET)
+
+.PHONY: clean
