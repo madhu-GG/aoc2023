@@ -1,5 +1,5 @@
 WSROOT:=../..
-EXEC_NAME=d2p1
+EXEC_NAME=d2
 SRC:=${PWD}/*.cpp
 INCDIR=$(WSROOT)/utils
 TARGET=$(WSROOT)/bin/$(EXEC_NAME)
