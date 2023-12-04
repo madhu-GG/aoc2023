@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 
     std::string line;
     int sum = 0;
-    while(f >> line) {
+    while(std::getline(f, line)) {
         sum += problem(line);
     }
 
