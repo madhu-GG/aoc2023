@@ -1,0 +1,1 @@
+g++ -DCERR_DEBUG -g -o ../../bin/d7p1 /home/madhu/ws/aoc23/day7/problem1/main.cpp -I../../utils
