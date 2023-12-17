@@ -6,6 +6,7 @@
 #include <deque>
 #include <set>
 #include <string>
+#include <cmath>
 
 void usage(std::string app_name) {
     std::cout << "Usage: " << app_name << " <input_file>" << std::endl;
@@ -26,17 +27,37 @@ class Graph {
     int rows, cols, start_index;
     char * vertices;
     int * dist;
+    bool * inside_cycle, * outside_cycle, * on_cycle;
+    size_t inside_count, outside_count;
     std::vector<int> cycle;
-    std::set<int> inside_cycle, outside_cycle, on_cycle;
+    // std::set<int> inside_cycle, outside_cycle, on_cycle;
 
-    std::vector<int> get_adj_relaxed(int cur) {
+    using point = std::pair<int, int>;
+    double angle(point a, point b, point c) {
+        int ac_x = a.second - c.second;
+        int ac_y = a.first - c.first;
+        int bc_x = b.second - c.second;
+        int bc_y = b.first - c.first;
+        double theta1 = std::atan2(ac_y, ac_x);
+        double theta2 = std::atan2(bc_y, bc_x);
+        double theta = theta2 - theta1;
+#ifdef CERR_DEBUG
+        // std::cerr << "ac angle: " << theta1 << ", bc angle: " << theta2 << std::endl;
+#endif
+        while (theta > pi) theta -= 2 * pi;
+        while (theta < -pi) theta += 2 * pi;
+
+        return theta;
+    }
+
+    std::vector<int> get_adj_relaxed(int cur, bool * visited) {
         std::vector<int> adj;
         int i = cur / cols, j = cur % cols;
         if (i < 0 || j < 0 || i >= rows || j >= cols) return adj;        
-        if (i > 0) adj.push_back(cur - cols);
-        if (j > 0) adj.push_back(cur - 1);
-        if (i + 1 < rows) adj.push_back(cur + cols);
-        if (j + 1 < cols) adj.push_back(cur + 1);
+        if (i > 0 && !visited[cur - cols] && !(inside_cycle[cur - cols] || on_cycle[cur - cols])) adj.push_back(cur - cols);
+        if (j > 0 && !visited[cur - 1] && !(inside_cycle[cur - 1] || on_cycle[cur - 1])) adj.push_back(cur - 1);
+        if (i + 1 < rows && !visited[cur + cols] && !(inside_cycle[cur + cols] || on_cycle[cur + cols])) adj.push_back(cur + cols);
+        if (j + 1 < cols && !visited[cur + 1] && !(inside_cycle[cur + 1] || on_cycle[cur + 1])) adj.push_back(cur + 1);
 
         return adj;
     }
@@ -141,51 +162,89 @@ class Graph {
         int cur = start_index;
         do {
             c.push_back(cur);
-            outside_cycle.erase(cur);
-            on_cycle.insert(cur);
+            outside_cycle[cur] = false;
+            outside_count--;
+            on_cycle[cur] = true;
             visited[cur] = true;
 
             int i = cur / cols, j = cur % cols;
             auto neigh = get_adj(i, j);
             int v = neigh[0];
-            if (on_cycle.find(v) != on_cycle.end()) v = neigh[1];
-            if (on_cycle.find(v) != on_cycle.end()) break;
+            if (on_cycle[v]) v = neigh[1];
+            if (on_cycle[v]) break;
 
             cur = v;
         } while (cur != start_index);
         return c;
     }
 
-    void flood_fill(int ind, bool * visited) {
+    // bool collinear(int a, int b, int c) {
+    //     auto ax = a % cols, ay = a / cols;
+    //     auto bx = b % cols, by = b / cols;
+    //     auto cx = c % cols, cy = c / cols;
+
+    //     return ((ax == bx && ax == cx) || (ay == by) && (ay == cy));
+    // }
+
+    // std::vector<int> trim_cycle(const std::vector<int>& cycle) {
+    //     std::vector<int> trimmed;
+    //     for (int i = 2; i < cycle.size(); i++) {
+    //         auto a = cycle[i],
+    //              b = cycle[i - 1],
+    //              c = cycle[i - 2];
+
+    //         if (collinear(a, b, c)) trimmed.push_back(b);
+    //     }
+
+    //     return trimmed;
+    // }
+
+
+    void flood_fill(int ind, bool * visited, bool is_outside = false) {
         std::deque<int> q;
         q.push_back(ind);
 
         while (!q.empty()) {
             auto cur = q.front();
             q.pop_front();
-            visited[cur] = true;
-            for (auto a : get_adj_relaxed(cur)) {
-                if (visited[a] || a == cur) continue;
-                inside_cycle.insert(a);
+            for (auto a : get_adj_relaxed(cur, visited)) {
+                if (!is_outside) {
+                    outside_cycle[a] = false;
+                    outside_count--;
+                    inside_cycle[a] = true;
+                    inside_count++;
+                }
                 q.push_back(a);
             }
+
+            visited[cur] = true;
         }
     }
 
     bool inside(int row, int col) {
-        int count = 0, ind = row * cols + col;
-        if (on_cycle.find(ind) != on_cycle.end()) return false;
-        if (inside_cycle.find(ind) != inside_cycle.end()) return true;
-        for (int j = col + 1; j < cols; j++) {
-            int cur = row * cols + j;
-            if (on_cycle.find(cur) != on_cycle.end()) count++;
+        double winding = 0.0;
+        for (int j = 0; j < cycle.size(); j++) {
+            int a, b;
+            if (j == 0) a = cycle[cycle.size() - 1];
+            else a = cycle[j - 1];
+
+            b = cycle[j];
+
+            auto theta= angle({ a / cols, a % cols },
+                                    { b / cols, b % cols },
+                                    {row, col});
+#ifdef CERR_DEBUG
+            // fprintf(stderr, "a: {%d, %d}, b: {%d, %d}, c: {%d, %d}, angle: %f\n", 
+            //         a / cols, a % cols, b / cols, b % cols, row, col, theta * 180 / pi);
+#endif
+            winding += theta;
         }
 
-        if (count % 2 != 0) {
-            return true;
-        }
+#ifdef CERR_DEBUG
+        fprintf(stderr, "loc: {%d, %d}, angle(rad=%lf): %lf\n", row, col, winding, winding * 180 / pi);
+#endif
 
-        return false;
+        return std::abs(winding) >= pi;
     }
 
     public:
@@ -205,7 +264,11 @@ class Graph {
             }
 
             vertices = new char[rows * cols];
-            
+            inside_cycle = new bool[rows * cols];
+            inside_count = 0;
+            outside_cycle = new bool[rows * cols];
+            outside_count = 0;
+            on_cycle = new bool[rows * cols];
             dist = new int[rows * cols];
             for (int i = 0; i < rows; i++) {
                 for (int j = 0; j < cols; j++) {
@@ -213,31 +276,41 @@ class Graph {
                     int k = i * cols + j;
                     dist[k] = -1;
                     vertices[k] = v;
-                    outside_cycle.insert(k);
+                    outside_cycle[k] = true;
+                    outside_count++;
+                    on_cycle[k] = inside_cycle[k] = false;
                     if (v == 'S') start_index = k;
                 }
             }
             dist[start_index] = 0;
             bool * visited = new bool[rows * cols];
-            cycle = get_cycle(visited);
+            for (int i = 0; i < rows * cols; i++) {
+                visited[i] = false;
+            }
 
-            for (int i = 0; i < rows; i++) {
-                for (int j = 0; j < cols; j++) {
-                    int ind = i * cols + j;
-                    if (visited[ind]) continue;
-                    if (outside_cycle.count(ind) > 0) {
-                        if (inside(i, j)) {
-                            outside_cycle.erase(ind);
-                            inside_cycle.insert(ind);
-                            flood_fill(ind, visited);
-                        }
-                    }
+            cycle = get_cycle(visited);
+            // trimmed_cycle = trim_cycle(cycle);
+
+            for (int ind = 0; ind < rows * cols; ind++) {
+                if (visited[ind]) continue;
+                visited[ind] = true;
+                bool in = inside(ind / cols, ind % cols);
+                if (in) {
+#ifdef CERR_DEBUG
+                    fprintf(stderr, "{%d, %d}: inside\n", ind / cols, ind % cols);
+#endif                            
+                    outside_cycle[ind] = false;
+                    outside_count--;
+                    inside_cycle[ind] = true;
+                    inside_count++;
                 }
+
+                // flood_fill(ind, visited, !in);
             }
         }
 
         size_t num_inside() {
-            return inside_cycle.size();
+            return inside_count;
         }
 
         int find_most_distant() {
