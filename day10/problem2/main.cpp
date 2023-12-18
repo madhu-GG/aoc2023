@@ -204,12 +204,11 @@ std::vector<int> cycle(const Graph& g) {
 
 const double pi = 3.14159265358979323846;
 
-using point = std::pair<int, int>;
-double angle(point a, point b, point c) {
-    int ac_x = a.second - c.second;
-    int ac_y = a.first - c.first;
-    int bc_x = b.second - c.second;
-    int bc_y = b.first - c.first;
+double angle(int ar, int ac, int br, int bc, int cr, int cc) {
+    int ac_x = ac - cc;
+    int ac_y = ar - cr;
+    int bc_x = bc - cc;
+    int bc_y = br - cr;
     double theta1 = std::atan2(ac_y, ac_x);
     double theta2 = std::atan2(bc_y, bc_x);
     double theta = theta2 - theta1;
@@ -220,6 +219,48 @@ double angle(point a, point b, point c) {
     while (theta < -pi) theta += 2 * pi;
 
     return theta;
+}
+
+double slope_diff(const Graph &g, int a, int b, int c) {
+    auto ar = a / g.ncols(), ac = a % g.ncols();
+    auto br = b / g.ncols(), bc = b % g.ncols();
+    auto cr = c / g.ncols(), cc = c % g.ncols();
+
+    //calculate slope of ab and ac
+    auto abx = ac - bc, aby = ar - br;
+    auto acx = ac - cc, acy = ar - cr;
+    if (abx == 0 && acx == 0) return 0; // x-component is 0
+    else if (abx == 0 || acx == 0) return 100.0; // one of the slopes is infinite
+
+    double m_ab = aby / abx; if (m_ab < 0) m_ab = -m_ab;
+    double m_ac = acy / acx; if (m_ac < 0) m_ac = -m_ac;
+    return m_ac - m_ab;
+}
+
+std::vector<int> trim(const Graph &g, const std::vector<int>& path) {
+    std::vector<int> trimmed;
+    /*
+    double diff, thres = 0.1;
+    int len = path.size();
+    for (int i = 2; i < len; i++) {
+        diff = slope_diff(g, path[i], path[i - 1], path[i - 2]);
+
+        // i, i - 1, and i - 2 are non-collinear, add only i - 1
+        if (diff <= thres) trimmed.push_back(path[i - 1]);
+    }
+
+    diff = slope_diff(g, path[0], path[len - 1], path[len - 2]);
+    if (diff <= thres) trimmed.push_back(path[len - 1]);
+    diff = slope_diff(g, path[1], path[0], path[len - 1]);
+    if (diff <= thres) trimmed.push_back(path[0]);
+    */
+
+    for (auto index : path) {
+        char v = g.at(index);
+        if (v != '-' && v != '|') trimmed.push_back(index);
+    }
+
+    return trimmed;
 }
 
 bool inside(const Graph &g, const std::vector<int>& path, int c) {
@@ -234,9 +275,8 @@ bool inside(const Graph &g, const std::vector<int>& path, int c) {
 
         b = path[j];
 
-        auto theta= angle({ a / cols, a % cols },
-                                { b / cols, b % cols },
-                                {row, col});
+        auto theta = angle(a / cols, a % cols, b / cols, b % cols,
+                          row, col);
 #ifdef CERR_DEBUG
         // fprintf(stderr, "a: {%d, %d}, b: {%d, %d}, c: {%d, %d}, angle: %f\n", 
         //         a / cols, a % cols, b / cols, b % cols, row, col, theta * 180 / pi);
@@ -245,7 +285,7 @@ bool inside(const Graph &g, const std::vector<int>& path, int c) {
     }
 
 #ifdef CERR_DEBUG
-    fprintf(stderr, "loc: {%d, %d}, angle(rad=%lf): %lf\n", row, col, winding, winding * 180 / pi);
+    //fprintf(stderr, "loc: {%d, %d}, angle(rad=%lf): %lf\n", row, col, winding, winding * 180 / pi);
 #endif
 
     return std::abs(winding) >= pi;
@@ -272,7 +312,9 @@ int num_inside(const Graph& g, const std::vector<int>& path) {
     int count = 0;
     std::unordered_set<int> visited, unvisited;
     int start, index;
-    
+
+    auto tpath = trim(g, path);
+
     for (int i = 0; i < g.nelems(); i++) {
         unvisited.insert(i);
     }
@@ -292,7 +334,7 @@ int num_inside(const Graph& g, const std::vector<int>& path) {
             que.pop();
 
             if (visited.count(index) == 0) {
-                bool is_inside_loop = inside(g, path, index);
+                bool is_inside_loop = inside(g, tpath, index);
                 //flood(g, index, is_inside_loop, visited, unvisited, count);
                 visited.insert(index);
                 unvisited.erase(index);
@@ -308,6 +350,38 @@ int num_inside(const Graph& g, const std::vector<int>& path) {
     return count;
 }
 
+#ifdef CERR_DEBUG
+void print_grid(const Graph& g, const std::vector<int>& path, const char symbol = '\0')
+{
+    char ** grid = new char*[g.nrows()];
+    
+    for (int i = 0; i < g.nrows(); i++) {
+        grid[i]= new char[g.ncols()];
+        for (int j = 0; j < g.ncols(); j++) {
+            grid[i][j] = '.';
+        }
+    }
+    
+    for (auto v : path) {
+        auto vr = v / g.ncols(), vc = v % g.ncols();
+        if (symbol == '\0') grid[vr][vc] = g.at(v);
+        else grid[vr][vc] = symbol;
+    }
+
+    std::cerr << std::endl;
+    for (int i = 0; i < g.nrows(); i++) {
+        for (int j = 0; j < g.ncols(); j++) {
+            std::cerr << grid[i][j];
+        }
+        std::cerr << std::endl;
+        delete[] grid[i];
+    }
+    std::cerr << std::endl;
+
+    delete[] grid;
+}
+#endif
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         usage(argv[0]);
@@ -320,6 +394,13 @@ int main(int argc, char **argv) {
     f.close();
 
     auto path = cycle(g);
+    auto tpath = trim(g, path);
+#ifdef CERR_DEBUG
+    print_grid(g, path);
+    print_grid(g, tpath);
+#endif
+    
+
     std::cout << "Max dist: " << path.size() / 2 << std::endl;
     std::cout << "Num Inside: " << num_inside(g, path) << std::endl;
 }
