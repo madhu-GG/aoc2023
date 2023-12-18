@@ -9,7 +9,11 @@ INC=-I$(INCDIR)
 $(TARGET): $(SRC)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(INC)
 
-debug: CXXFLAGS +=-DCERR_DEBUG -g
+prof: CXXFLAGS +=-pg
+prof: $(TARGET)
+
+
+debug: CXXFLAGS +=-DCERR_DEBUG -g -pg
 debug: $(TARGET)
 
 all: $(TARGET)
