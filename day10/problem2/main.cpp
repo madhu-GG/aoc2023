@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <queue>
+#include <set>
 #include <unordered_set>
 #include <map>
 
@@ -202,151 +203,66 @@ std::vector<int> cycle(const Graph& g) {
     return path;
 }
 
-const double pi = 3.14159265358979323846;
+char connector(char top, char down, char left, char right) {
+    std::set<char> candidates = { '-', '|', 'F', '7', 'J', 'L' };
+    std::string top_compat = "7|F", down_compat = "J|L",
+        left_compat = "F-L", right_compat = "7-J";
 
-double angle(int ar, int ac, int br, int bc, int cr, int cc) {
-    int ac_x = ac - cc;
-    int ac_y = ar - cr;
-    int bc_x = bc - cc;
-    int bc_y = br - cr;
-    double theta1 = std::atan2(ac_y, ac_x);
-    double theta2 = std::atan2(bc_y, bc_x);
-    double theta = theta2 - theta1;
+    if (top_compat.find(top) == std::string::npos) for (auto v : down_compat) candidates.erase(v);
+    if (candidates.size() == 1) return *(candidates.begin());
+    if (left_compat.find(left) == std::string::npos) for (auto v : right_compat) candidates.erase(v);
+    if (candidates.size() == 1) return *(candidates.begin());
+
+    if (down_compat.find(down) == std::string::npos) for (auto v : top_compat) candidates.erase(v);
+    if (candidates.size() == 1) return *(candidates.begin());
+    if (right_compat.find(right) == std::string::npos) for (auto v : left_compat) candidates.erase(v);
+    if (candidates.size() == 1) return *(candidates.begin());
+
 #ifdef CERR_DEBUG
-    // std::cerr << "ac angle: " << theta1 << ", bc angle: " << theta2 << std::endl;
+    std::cerr << "Too many/Too few candidates left: " << candidates.size() << std::endl;
+    for (auto v: candidates) std::cout << v << std::endl;
 #endif
-    while (theta > pi) theta -= 2 * pi;
-    while (theta < -pi) theta += 2 * pi;
-
-    return theta;
+    return '\0';
 }
 
-double slope_diff(const Graph &g, int a, int b, int c) {
-    auto ar = a / g.ncols(), ac = a % g.ncols();
-    auto br = b / g.ncols(), bc = b % g.ncols();
-    auto cr = c / g.ncols(), cc = c % g.ncols();
-
-    //calculate slope of ab and ac
-    auto abx = ac - bc, aby = ar - br;
-    auto acx = ac - cc, acy = ar - cr;
-    if (abx == 0 && acx == 0) return 0; // x-component is 0
-    else if (abx == 0 || acx == 0) return 100.0; // one of the slopes is infinite
-
-    double m_ab = aby / abx; if (m_ab < 0) m_ab = -m_ab;
-    double m_ac = acy / acx; if (m_ac < 0) m_ac = -m_ac;
-    return m_ac - m_ab;
-}
-
-std::vector<int> trim(const Graph &g, const std::vector<int>& path) {
-    std::vector<int> trimmed;
-    /*
-    double diff, thres = 0.1;
-    int len = path.size();
-    for (int i = 2; i < len; i++) {
-        diff = slope_diff(g, path[i], path[i - 1], path[i - 2]);
-
-        // i, i - 1, and i - 2 are non-collinear, add only i - 1
-        if (diff <= thres) trimmed.push_back(path[i - 1]);
-    }
-
-    diff = slope_diff(g, path[0], path[len - 1], path[len - 2]);
-    if (diff <= thres) trimmed.push_back(path[len - 1]);
-    diff = slope_diff(g, path[1], path[0], path[len - 1]);
-    if (diff <= thres) trimmed.push_back(path[0]);
-    */
-
-    for (auto index : path) {
-        char v = g.at(index);
-        if (v != '-' && v != '|') trimmed.push_back(index);
-    }
-
-    return trimmed;
-}
-
-bool inside(const Graph &g, const std::vector<int>& path, int c) {
-    double winding = 0.0;
-    auto rows = g.nrows(), cols = g.ncols();
+bool inside(char ** grid, int rows, int cols, int c) {
+    int count = 0;
+    char stack;
     auto row = c / cols, col = c % cols;
 
-    for (int j = 0; j < path.size(); j++) {
-        int a, b;
-        if (j == 0) a = path[path.size() - 1];
-        else a = path[j - 1];
-
-        b = path[j];
-
-        auto theta = angle(a / cols, a % cols, b / cols, b % cols,
-                          row, col);
-#ifdef CERR_DEBUG
-        // fprintf(stderr, "a: {%d, %d}, b: {%d, %d}, c: {%d, %d}, angle: %f\n", 
-        //         a / cols, a % cols, b / cols, b % cols, row, col, theta * 180 / pi);
-#endif
-        winding += theta;
-    }
-
-#ifdef CERR_DEBUG
-    //fprintf(stderr, "loc: {%d, %d}, angle(rad=%lf): %lf\n", row, col, winding, winding * 180 / pi);
-#endif
-
-    return std::abs(winding) >= pi;
-}
-
-void flood(const Graph& g, int start, bool is_inside_loop, std::unordered_set<int>& visited, std::unordered_set<int>& unvisited, int& count) {
-    std::queue<int> que;
-    que.push(start);
-    while(!que.empty()) {
-        auto index = que.front();
-        que.pop();
-        visited.insert(index);
-        unvisited.erase(index);
-        if (is_inside_loop) count++;
-
-        for (int next: g.adj(index, false)) {
-            if (visited.count(next)) continue;
-            que.push(next);
+    for (int j = col + 1; j < cols; j++) {
+        switch (grid[row][j]) {
+            case '|': count++; break;
+            case 'F': stack = 'F'; break;
+            case '7': if (stack == 'L') count++; stack = '\0'; break;
+            case 'L': stack = 'L'; break;
+            case 'J': if(stack == 'F') count++; stack = '\0'; break;
+            break;
         }
     }
+    return count % 2 != 0;
 }
 
-int num_inside(const Graph& g, const std::vector<int>& path) {
+int num_inside(char ** grid, const std::vector<int>& path, int rows, int cols) {
     int count = 0;
-    std::unordered_set<int> visited, unvisited;
-    int start, index;
+    std::unordered_set<int> visited;
 
-    auto tpath = trim(g, path);
+    for (auto v : path) visited.insert(v);
 
-    for (int i = 0; i < g.nelems(); i++) {
-        unvisited.insert(i);
-    }
-
-    for (auto v : path) {
-        visited.insert(v);
-        unvisited.erase(v);
-    }
-
-    std::queue<int> que;
-    while(unvisited.size() > 0) {
-        start = *(unvisited.begin());
-
-        que.push(start);
-        while (!que.empty()) {
-            index = que.front();
-            que.pop();
-
-            if (visited.count(index) == 0) {
-                bool is_inside_loop = inside(g, tpath, index);
-                //flood(g, index, is_inside_loop, visited, unvisited, count);
-                visited.insert(index);
-                unvisited.erase(index);
-                if (is_inside_loop) count++;
-                for (int next: g.adj(index, false)) {
-                    if (visited.count(next)) continue;
-                    que.push(next);
-                }
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            auto v = i * cols + j;
+            if (!visited.count(v) && inside(grid, rows, cols, v)) {
+                visited.insert(v);
+#ifdef CERR_DEBUG
+                std::cerr << i * cols + j << " : {" << i << ", " << j << "}" << std::endl;
+#endif
+                count++;
             }
         }
     }
 
+    visited.clear();
     return count;
 }
 
@@ -394,13 +310,50 @@ int main(int argc, char **argv) {
     f.close();
 
     auto path = cycle(g);
-    auto tpath = trim(g, path);
 #ifdef CERR_DEBUG
     print_grid(g, path);
-    print_grid(g, tpath);
 #endif
-    
+
+    char ** grid = new char*[g.nrows()];
+    for (int i = 0; i < g.nrows(); i++) {
+        grid[i]= new char[g.ncols()];
+        for (int j = 0; j < g.ncols(); j++) {
+            grid[i][j] = '.';
+        }
+    }
+
+    for (auto v : path) {
+        auto vr = v / g.ncols(), vc = v % g.ncols();
+        auto c = g.at(v);
+
+        if (c == 'S') {
+            c = connector(
+                (vr > 0)? g.at(v - g.ncols()) : '\0',
+                (vr + 1 < g.nrows())? g.at(v + g.ncols()) : '\0',
+                (vc > 0)? g.at(v - 1) : '\0',
+                (vc + 1 < g.ncols())? g.at(v + 1) : '\0'
+            );
+        }
+
+        grid[vr][vc] = c;
+    }
+
+#ifdef CERR_DEBUG
+    std::cerr << "After guessing S: " << std::endl;
+    for (int i = 0; i < g.nrows(); i++) {
+        for (int j = 0; j < g.ncols(); j++) {
+            std::cerr << grid[i][j];
+        }
+        std::cerr << std::endl;
+    }
+#endif
 
     std::cout << "Max dist: " << path.size() / 2 << std::endl;
-    std::cout << "Num Inside: " << num_inside(g, path) << std::endl;
+    std::cout << "Num Inside: " << num_inside(grid, path, g.nrows(), g.ncols()) << std::endl;
+
+    for (int i = 0; i < g.nrows(); i++) {
+        delete[] grid[i];
+    }
+
+    delete[] grid;
 }
