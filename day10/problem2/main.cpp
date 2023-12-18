@@ -1,10 +1,7 @@
 #include <fstream>
 #include <iostream>
-#include <cmath>
 #include <string>
 #include <vector>
-#include <queue>
-#include <set>
 #include <unordered_set>
 #include <map>
 
@@ -204,7 +201,7 @@ std::vector<int> cycle(const Graph& g) {
 }
 
 char connector(char top, char down, char left, char right) {
-    std::set<char> candidates = { '-', '|', 'F', '7', 'J', 'L' };
+    std::unordered_set<char> candidates = { '-', '|', 'F', '7', 'J', 'L' };
     std::string top_compat = "7|F", down_compat = "J|L",
         left_compat = "F-L", right_compat = "7-J";
 
